@@ -1,0 +1,70 @@
+# ASP.NET Core (.NET Framework)
+# Build and test ASP.NET Core projects targeting the full .NET Framework.
+# Add steps that publish symbols, save build artifacts, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/dotnet-core
+
+trigger:
+- master
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  solution: '**/*.sln'
+  buildPlatform: 'Any CPU'
+  buildConfiguration: 'Release'
+
+steps:
+- task: NuGetToolInstaller@1
+
+- task: NuGetCommand@2
+  inputs:
+    restoreSolution: '$(solution)'
+
+- task: VSBuild@1
+  inputs:
+    solution: '$(solution)'
+    msbuildArgs: '/p:DeployOnBuild=true /p:WebPublishMethod=Package /p:PackageAsSingleFile=true /p:SkipInvalidConfigurations=true /p:DesktopBuildPackageLocation="$(build.artifactStagingDirectory)\sqlapp.zip" /p:DeployIisAppPath="Default Web Site"'
+    platform: '$(buildPlatform)'
+    configuration: '$(buildConfiguration)'
+
+- task: DotNetCoreCLI@2
+  displayName: Performing Unit Tests via Cobertura
+  inputs:
+    command: test
+    projects: '**/sqlapptest.csproj'
+    arguments: '/p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=./MyCoverage/'
+    configuration: '--configuration $(buildConfiguration)'
+
+- task: PublishCodeCoverageResults@1
+  displayName: 'Publishing Code Coverage Results'
+  inputs:
+    codeCoverageTool: 'Cobertura'
+    summaryFileLocation: '$(Build.SourcesDirectory)/MyCoverage/coverage.cobertura.xml'
+
+- task: DotNetCoreCLI@2
+  displayName: Zipping Project Artifact
+  inputs:
+    command: publish
+    publishWebProjects: True
+    arguments: '--configuration $(BuildConfiguration) --output $(Build.ArtifactStagingDirectory)/app-zip'
+    zipAfterPublish: True
+
+- task: PublishBuildArtifacts@1
+  displayName: Publishing Zipped Project Artifact
+  inputs:
+    pathToPublish: '$(Build.ArtifactStagingDirectory)/app-zip'
+    artifactName: app-zip
+
+- task: CopyFiles@2
+  displayName: Copy DevOps Files to Path
+  inputs:
+    sourceFolder: '$(Build.SourcesDirectory)'
+    contents: '**/Devops/**'
+    targetFolder: '$(Build.ArtifactStagingDirectory)'
+    
+- task: PublishBuildArtifacts@1
+  displayName: Publishing DevOps Artifacts
+  inputs:
+    pathToPublish: '$(Build.ArtifactStagingDirectory)/Devops'
+    artifactName: devops
